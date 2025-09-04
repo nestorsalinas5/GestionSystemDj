@@ -10,95 +10,62 @@ import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
 import PasswordModal from './components/PasswordModal';
 
+// URL de tu backend.
+const API_URL = 'http://localhost:3001/api';
+
 const App: React.FC = () => {
+  // El estado ahora se inicializa vacío, el backend es la fuente de verdad.
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-
   const [events, setEvents] = useState<Event[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [view, setView] = useState<View>('dashboard');
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('GestionSystemDjTheme') as 'light' | 'dark') || 'dark';
-  });
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as 'light' | 'dark') || 'dark');
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
-  // --- Theme and Users Initialization ---
   useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(theme);
-    localStorage.setItem('GestionSystemDjTheme', theme);
+    document.documentElement.className = theme;
+    localStorage.setItem('theme', theme);
   }, [theme]);
 
-  useEffect(() => {
+  // --- Función para obtener todos los datos del usuario logueado ---
+  const fetchUserData = async (userId: string, userRole: string) => {
     try {
-      const storedUsers = localStorage.getItem('GestionSystemDjUsers');
-      if (storedUsers) {
-        setUsers(JSON.parse(storedUsers));
+      if (userRole === 'admin') {
+        const usersResponse = await fetch(`${API_URL}/users`);
+        setUsers(await usersResponse.json());
       } else {
-        // First time setup: create admin user
-        const adminId = crypto.randomUUID();
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 3650); // Valid for 10 years
-        const adminUser: User = {
-          id: adminId,
-          username: 'admin',
-          password: 'admin', // In a real app, this MUST be hashed.
-          role: 'admin',
-          activeUntil: tomorrow.toISOString(),
-          isActive: true,
-          subscriptionTier: 'Admin',
-        };
-        setUsers([adminUser]);
-        localStorage.setItem('GestionSystemDjUsers', JSON.stringify([adminUser]));
+        const eventsResponse = await fetch(`${API_URL}/events?userId=${userId}`);
+        setEvents(await eventsResponse.json());
+        const clientsResponse = await fetch(`${API_URL}/clients?userId=${userId}`);
+        setClients(await clientsResponse.json());
       }
     } catch (error) {
-      console.error("Failed to initialize users", error);
+      console.error("Error fetching user data:", error);
     }
-  }, []);
+  };
 
-  // --- Auth and Data Management ---
-  const handleLogin = (username: string, password?: string) => {
-    const user = users.find(u => u.username === username && u.password === password);
-    if (!user) {
-      setAuthError("Usuario o contraseña incorrectos.");
-      return;
-    }
-    
-    if (!user.isActive) {
-      setAuthError("Su cuenta ha sido desactivada. Contacte al administrador.");
-      return;
-    }
-
-    const now = new Date();
-    const activeUntil = new Date(user.activeUntil);
-    if (now > activeUntil) {
-      setAuthError("Su suscripción ha expirado. Contacte al administrador.");
-      return;
-    }
-
-    setAuthError(null);
-    setCurrentUser(user);
-    
-    // Load user-specific data
+  // --- Auth y Data Management ---
+  const handleLogin = async (username: string, password?: string) => {
     try {
-      const storedData = localStorage.getItem(`GestionSystemDjData_${user.id}`);
-      if (storedData) {
-        const { events: userEvents, clients: userClients } = JSON.parse(storedData);
-        setEvents(userEvents || []);
-        setClients(userClients || []);
-      } else {
-        setEvents([]);
-        setClients([]);
+      const response = await fetch(`${API_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setAuthError(data.message || "Error al iniciar sesión.");
+        return;
       }
+      setAuthError(null);
+      setCurrentUser(data.user);
+      await fetchUserData(data.user.id, data.user.role);
+      setView(data.user.role === 'admin' ? 'adminDashboard' : 'dashboard');
     } catch (error) {
-      console.error("Failed to parse user data from localStorage", error);
-      setEvents([]);
-      setClients([]);
+      setAuthError("No se pudo conectar con el servidor.");
     }
-
-    setView(user.role === 'admin' ? 'adminDashboard' : 'dashboard');
   };
 
   const handleLogout = () => {
@@ -106,139 +73,76 @@ const App: React.FC = () => {
     setEvents([]);
     setClients([]);
   };
-  
-  const updateUserData = (data: { events: Event[]; clients: Client[] }) => {
-    if (!currentUser) return;
-    try {
-      localStorage.setItem(`GestionSystemDjData_${currentUser.id}`, JSON.stringify(data));
-    } catch (error) {
-      console.error("Failed to save user data to localStorage", error);
-    }
-  };
 
   // --- User Management (Admin) ---
-  const addUser = (user: Omit<User, 'id'>) => {
-    setUsers(prevUsers => {
-      const newUser = { ...user, id: crypto.randomUUID() };
-      const updatedUsers = [...prevUsers, newUser];
-      localStorage.setItem('GestionSystemDjUsers', JSON.stringify(updatedUsers));
-      return updatedUsers;
-    });
+  const addUser = async (user: Omit<User, 'id'>) => {
+    // Lógica para llamar al backend y añadir usuario, luego actualizar el estado
   };
-
-  const updateUser = (updatedUser: Partial<User> & { id: string }) => {
-     setUsers(prevUsers => {
-      const updatedUsers = prevUsers.map(u => u.id === updatedUser.id ? { ...u, ...updatedUser } : u);
-      localStorage.setItem('GestionSystemDjUsers', JSON.stringify(updatedUsers));
-      return updatedUsers;
-    });
+  const updateUser = async (updatedUser: Partial<User> & { id: string }) => {
+    // Lógica para llamar al backend y actualizar usuario
   };
-  
   const handleChangePassword = (password: string) => {
-    if (currentUser) {
-      updateUser({ id: currentUser.id, password });
-      setIsPasswordModalOpen(false);
-      alert("Contraseña actualizada con éxito.");
-    }
+    // Lógica para llamar al backend y cambiar la contraseña
   };
 
   // --- Event handlers ---
-  const addEvent = useCallback((event: Omit<Event, 'id'>) => {
-    setEvents(prevEvents => {
-      const newEvent = { ...event, id: crypto.randomUUID() };
-      const updatedEvents = [...prevEvents, newEvent].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      updateUserData({ events: updatedEvents, clients });
-      return updatedEvents;
+  const addEvent = useCallback(async (event: Omit<Event, 'id'>) => {
+    if (!currentUser) return;
+    const response = await fetch(`${API_URL}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...event, user_id: currentUser.id })
     });
-  }, [clients, currentUser]);
+    if (response.ok) {
+        await fetchUserData(currentUser.id, currentUser.role); // Recargamos los datos
+    }
+  }, [currentUser]);
 
-  const updateEvent = useCallback((updatedEvent: Event) => {
-    setEvents(prevEvents => {
-      const updatedEvents = prevEvents.map(event =>
-        event.id === updatedEvent.id ? updatedEvent : event
-      ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      updateUserData({ events: updatedEvents, clients });
-      return updatedEvents;
-    });
-  }, [clients, currentUser]);
+  const updateEvent = useCallback(async (updatedEvent: Event) => {
+    // Lógica para llamar a la API y actualizar el evento
+  }, [currentUser]);
 
-  const deleteEvent = useCallback((eventId: string) => {
-    setEvents(prevEvents => {
-      const updatedEvents = prevEvents.filter(event => event.id !== eventId);
-      updateUserData({ events: updatedEvents, clients });
-      return updatedEvents;
-    });
-  }, [clients, currentUser]);
+  const deleteEvent = useCallback(async (eventId: string) => {
+    // Lógica para llamar a la API y borrar el evento
+  }, [currentUser]);
 
   // --- Client handlers ---
-  const addClient = useCallback((client: Omit<Client, 'id'>) => {
-    setClients(prevClients => {
-      const newClient = { ...client, id: crypto.randomUUID() };
-      const updatedClients = [...prevClients, newClient];
-      updateUserData({ events, clients: updatedClients });
-      return updatedClients;
-    });
-  }, [events, currentUser]);
-  
-  const updateClient = useCallback((updatedClient: Client) => {
-    setClients(prevClients => {
-      const updatedClients = prevClients.map(c => c.id === updatedClient.id ? updatedClient : c);
-      updateUserData({ events, clients: updatedClients });
-      return updatedClients;
-    });
-  }, [events, currentUser]);
-
-  const deleteClient = useCallback((clientId: string) => {
-    if (events.some(e => e.clientId === clientId)) {
-        alert("No se puede eliminar un cliente que está asociado a uno o más eventos.");
-        return;
-    }
-    setClients(prevClients => {
-      const updatedClients = prevClients.filter(c => c.id !== clientId);
-      updateUserData({ events, clients: updatedClients });
-      return updatedClients;
-    });
-  }, [events, currentUser]);
-
-  // --- Data Import/Export ---
-  const handleExportData = () => {
+  const addClient = useCallback(async (client: Omit<Client, 'id'>) => {
     if (!currentUser) return;
-    const dataStr = JSON.stringify({ events, clients });
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    const exportFileDefaultName = `GestionSystemDj_${currentUser.username}_Backup_${new Date().toISOString().split('T')[0]}.json`;
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
-  };
-
-  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileReader = new FileReader();
-    if (e.target.files && e.target.files[0]) {
-        fileReader.readAsText(e.target.files[0], "UTF-8");
-        fileReader.onload = e => {
-            try {
-                const importedData = JSON.parse(e.target?.result as string);
-                if (importedData.events && importedData.clients) {
-                    setEvents(importedData.events);
-                    setClients(importedData.clients);
-                    updateUserData(importedData);
-                    alert("Datos importados con éxito!");
-                } else {
-                    alert("El archivo no tiene el formato correcto.");
-                }
-            } catch (error) {
-                alert("Error al leer el archivo de importación.");
-                console.error(error);
-            }
-        };
+     const response = await fetch(`${API_URL}/clients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...client, user_id: currentUser.id })
+    });
+    if (response.ok) {
+        await fetchUserData(currentUser.id, currentUser.role); // Recargamos los datos
     }
+  }, [currentUser]);
+
+  const updateClient = useCallback(async (updatedClient: Client) => {
+    // Lógica para llamar a la API y actualizar el cliente
+  }, [currentUser]);
+
+  const deleteClient = useCallback(async (clientId: string) => {
+    // Lógica para llamar a la API y borrar el cliente
+  }, [currentUser, events]);
+  
+  // El import/export ahora debería ser una función del backend,
+  // pero mantenemos la lógica por si se quiere un backup local.
+  const handleExportData = () => {
+    const dataStr = JSON.stringify({ events, clients });
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `backup_${currentUser?.username}.json`;
+    link.click();
   };
 
   const renderView = () => {
     if (!currentUser) return null;
     if (currentUser.role === 'admin') {
-       return <AdminDashboard users={users.filter(u => u.role !== 'admin')} onAddUser={addUser} onUpdateUser={updateUser} />;
+      return <AdminDashboard users={users} onAddUser={addUser} onUpdateUser={updateUser} />;
     }
     switch (view) {
       case 'dashboard': return <Dashboard events={events} />;
@@ -263,7 +167,7 @@ const App: React.FC = () => {
         theme={theme}
         setTheme={setTheme}
         onExport={handleExportData}
-        onImport={handleImportData}
+        onImport={() => alert('La importación debe manejarse a través del backend.')}
         onLogout={handleLogout}
         onOpenPasswordModal={() => setIsPasswordModalOpen(true)}
       />
