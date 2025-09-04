@@ -1,0 +1,5 @@
+{
+  "name": "GestionSystemDj",
+  "description": "A DJ Event Management System to track events, finances, and generate reports. It provides a dashboard with monthly summaries and financial charts.",
+  "requestFramePermissions": []
+}
