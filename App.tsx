@@ -11,7 +11,7 @@ import AdminDashboard from './components/AdminDashboard';
 import PasswordModal from './components/PasswordModal';
 
 // URL de tu backend.
-const API_URL = 'http://localhost:3001/api';
+const API_URL = 'https://gestionsystemdj-backend.onrender.com';
 
 const App: React.FC = () => {
   // El estado ahora se inicializa vacío, el backend es la fuente de verdad.
