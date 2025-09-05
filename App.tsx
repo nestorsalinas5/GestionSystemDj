@@ -12,7 +12,7 @@ import PasswordModal from './components/PasswordModal';
 
 // 🔹 Detecta automáticamente la URL del backend
 const getApiUrl = () => {
-  if (window.location.hostname === 'localhost') {
+  if (window.location.hostname === 'https://gestionsystemdj-backend.onrender.com/api') {
     return 'http://localhost:3001/api'; // desarrollo local
   }
   return 'https://gestionsystemdj-backend.onrender.com/api'; // producción en GitHub Pages
